@@ -1,0 +1,38 @@
+{
+  "id": "opencode-bridge",
+  "name": "OpenCode Bridge",
+  "description": "Route @cc/@ccn/@ccu prefix messages to OpenCode via tmux, suppressing the default LLM response.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "scriptsDir": {
+        "type": "string",
+        "description": "Path to bridge shell scripts directory"
+      },
+      "channel": {
+        "type": "string",
+        "description": "Delivery channel (telegram, discord, slack, etc.)"
+      },
+      "targetId": {
+        "type": "string",
+        "description": "Delivery target ID for replies"
+      }
+    },
+    "required": ["scriptsDir"]
+  },
+  "uiHints": {
+    "scriptsDir": {
+      "label": "Scripts Directory",
+      "help": "Absolute path to the directory containing opencode-send.sh, opencode-new-session.sh, opencode-stats.sh"
+    },
+    "channel": {
+      "label": "Channel",
+      "help": "Channel for sending replies (e.g. telegram)"
+    },
+    "targetId": {
+      "label": "Target ID",
+      "help": "Target ID for sending replies (e.g. Telegram chat ID)"
+    }
+  }
+}
