@@ -4,7 +4,9 @@
 [![license](https://img.shields.io/npm/l/openclaw-opencode-bridge)](LICENSE)
 [![node](https://img.shields.io/node/v/openclaw-opencode-bridge)](package.json)
 
-> Forked from [openclaw-claude-bridge](https://github.com/bettep-dev/openclaw-claude-bridge) by [@bettep-dev](https://github.com/bettep-dev) — modified to work with OpenCode instead of Claude CLI.
+> Liked this project? Consider donating!
+
+> EVM Address: 0xe81c32383C8F21A14E6C2264939dA512e9F9bb42
 
 Bridge [OpenClaw](https://openclaw.ai) messaging channels to [OpenCode](https://opencode.ai) via persistent tmux sessions.
 
@@ -97,6 +99,8 @@ Removes all installed components — plugin, shell scripts, OPENCODE.md addition
 | LLM responds instead of delivery message | `openclaw gateway restart` |
 | Delivery confirmed but no reply | Check `tmux ls` — session may have crashed |
 | Multiline sends only first line | Re-run `openclaw-opencode-bridge onboard` (v2.0.6+) |
+
+> Forked from [openclaw-claude-bridge](https://github.com/bettep-dev/openclaw-claude-bridge) by [@bettep-dev](https://github.com/bettep-dev) — modified to work with OpenCode instead of Claude CLI.
 
 ## License
 

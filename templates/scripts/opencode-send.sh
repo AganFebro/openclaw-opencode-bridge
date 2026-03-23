@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 6
+# bridge-version: 9
 # Dispatch instruction to OpenCode asynchronously and relay response
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -78,6 +78,11 @@ is_trivial_echo() {
     [ -n "$message_norm" ] && [ "$output_norm" = "$message_norm" ]
 }
 
+has_external_delivery_success() {
+    local raw="$1"
+    printf '%s\n' "$raw" | grep -Eqi 'Sent via [A-Za-z]+|Message ID:[[:space:]]*[0-9]+'
+}
+
 extract_last_marked_block() {
     local raw="$1"
     if ! printf '%s' "$raw" | grep -q '🔗'; then
@@ -122,6 +127,38 @@ sanitize_output() {
     cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/^🔗[[:space:]]*//')"
 
     printf '%s' "$(trim_text "$cleaned")"
+}
+
+sentence_case_first() {
+    local text="$1"
+    printf '%s' "$text" | awk '
+    BEGIN { done = 0 }
+    {
+        if (done) { print; next }
+        line = $0
+        for (i = 1; i <= length(line); i++) {
+            ch = substr(line, i, 1)
+            if (ch ~ /[a-z]/) {
+                pre = substr(line, 1, i - 1)
+                post = substr(line, i + 1)
+                line = pre toupper(ch) post
+                done = 1
+                break
+            } else if (ch ~ /[A-Z]/) {
+                done = 1
+                break
+            }
+        }
+        print line
+    }'
+}
+
+apply_reply_style() {
+    local text="$1"
+    text="$(trim_text "$text")"
+    [ -z "$text" ] && { printf '%s' "$text"; return; }
+    text="$(sentence_case_first "$text")"
+    printf '%s' "$text"
 }
 
 run_with_timeout() {
@@ -174,8 +211,8 @@ run_with_timeout() {
 
     run_result="$(run_with_timeout --continue "$FULL_MSG")"
     rc="$(printf '%s' "$run_result" | head -n 1)"
-    output="$(printf '%s' "$run_result" | tail -n +2)"
-    output="$(sanitize_output "$output")"
+    raw_output="$(printf '%s' "$run_result" | tail -n +2)"
+    output="$(sanitize_output "$raw_output")"
 
     if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
         output="OpenCode timed out after ${RUN_TIMEOUT_SEC}s. Task may still be running. Try waiting a bit or send a follow-up."
@@ -185,7 +222,13 @@ run_with_timeout() {
         output="OpenCode ran, but returned a non-informative echo. Please retry with a more specific prompt."
     fi
 
-    openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$output"
+    output="$(apply_reply_style "$output")"
+
+    if has_external_delivery_success "$raw_output"; then
+        printf '[%s] /cc skipped bridge send (already sent by OpenCode)\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+    else
+        openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$output"
+    fi
 
     ended_at=$(date +%s)
     elapsed=$((ended_at - started_at))
