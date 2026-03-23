@@ -121,6 +121,11 @@ Ini akan menghapus plugin, script bridge, AGENTS.md hasil instalasi bridge, dan 
 | Perintah lambat/timeout | Cek prompt terlalu berat, lihat log bridge, pastikan OpenCode CLI normal |
 | Output aneh/berantakan | Ulangi onboarding agar script/plugin terbaru terpasang |
 
+## Attribution
+
+Proyek ini diadaptasi dari karya original:
+`https://github.com/bettep-dev/openclaw-claude-bridge`
+
 ## License
 
 [MIT](LICENSE)

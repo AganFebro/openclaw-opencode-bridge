@@ -121,6 +121,11 @@ If this project helps you, you can support it via:
 
 `0xe81c32383C8F21A14E6C2264939dA512e9F9bb42`
 
+## Attribution
+
+This project is adapted from the original work:
+`https://github.com/bettep-dev/openclaw-claude-bridge`
+
 ## License
 
 [MIT](LICENSE)
