@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 5
+# bridge-version: 6
 # Dispatch instruction to OpenCode asynchronously and relay response
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -9,6 +9,7 @@ WORKSPACE="{{WORKSPACE}}"
 LOG_FILE="/tmp/opencode-bridge-send.log"
 BASE_TIMEOUT_SEC=45
 MAX_TIMEOUT_SEC=300
+LOCK_WAIT_SEC=600
 
 if [ -z "$MSG" ]; then
     echo "ERROR: No message provided"
@@ -26,6 +27,21 @@ normalize_text() {
     printf '%s' "$1" \
         | tr '[:upper:]' '[:lower:]' \
         | sed -E 's/^🔗[[:space:]]*//; s/^["'\''`]+|["'\''`]+$//g; s/[[:space:]]+/ /g; s/^[[:space:]]+|[[:space:]]+$//g'
+}
+
+acquire_bridge_lock() {
+    local safe_channel safe_target lock_file
+    safe_channel="$(printf '%s' "$CHANNEL" | sed -E 's/[^a-zA-Z0-9._-]/_/g')"
+    safe_target="$(printf '%s' "$TARGET" | sed -E 's/[^a-zA-Z0-9._-]/_/g')"
+    lock_file="/tmp/opencode-bridge-${safe_channel}-${safe_target}.lock"
+
+    if command -v flock >/dev/null 2>&1; then
+        exec 200>"$lock_file"
+        flock -w "$LOCK_WAIT_SEC" 200
+        return $?
+    fi
+
+    return 0
 }
 
 compute_timeout() {
@@ -62,38 +78,48 @@ is_trivial_echo() {
     [ -n "$message_norm" ] && [ "$output_norm" = "$message_norm" ]
 }
 
-extract_embedded_send_message() {
+extract_last_marked_block() {
     local raw="$1"
-    local line message
-
-    line="$(printf '%s\n' "$raw" | grep -E 'openclaw message send --channel' | tail -n 1)"
-    [ -z "$line" ] && return 0
-
-    if printf '%s' "$line" | grep -q -- "-m '"; then
-        message="$(printf '%s' "$line" | sed -n "s/.* -m '\(.*\)'.*/\1/p")"
-    elif printf '%s' "$line" | grep -q -- '-m "'; then
-        message="$(printf '%s' "$line" | sed -n 's/.* -m "\(.*\)".*/\1/p')"
+    if ! printf '%s' "$raw" | grep -q '🔗'; then
+        return 0
     fi
 
-    printf '%s' "$(trim_text "$message")"
+    printf '%s\n' "$raw" | awk '
+    {
+        pos = index($0, "🔗");
+        if (pos > 0) {
+            out = substr($0, pos);
+            capture = 1;
+            next;
+        }
+        if (capture) {
+            out = out "\n" $0;
+        }
+    }
+    END {
+        if (capture) print out;
+    }'
 }
 
 sanitize_output() {
     local raw="$1"
-    local extracted cleaned
-
-    extracted="$(extract_embedded_send_message "$raw")"
-    if [ -n "$extracted" ]; then
-        printf '%s' "$extracted"
-        return 0
-    fi
+    local cleaned marked
 
     cleaned="$(printf '%s' "$raw" \
         | tr '\r' '\n' \
         | sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g; s/\x1B\\][^\a]*(\a|\x1B\\\\)//g')"
 
+    cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/\[[0-9]{1,3}m//g')"
+
     cleaned="$(printf '%s\n' "$cleaned" | grep -Ev \
-        '^[[:space:]]*$|^[[:space:]]*(build ·|◇ Doctor warnings)[[:space:]]*$|^[[:space:]]*openclaw message send --channel[[:space:]]+|^[[:space:]]*Sent via Telegram|^[[:space:]]*\[[0-9]{1,3}m|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoSelectFamily=|dnsResultOrder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$|^[[:space:]]*\$[[:space:]]*\[[0-9]{1,3}m')"
+        '^[[:space:]]*$|^[[:space:]]*(build[[:space:]]*·|◇[[:space:]]+Doctor warnings)[[:space:]]*$|^[[:space:]]*◇[[:space:]]+|^[[:space:]]*[←→↳].*|^[[:space:]]*Wrote file successfully\.?$|^[[:space:]]*(\$[[:space:]]*)?openclaw message send --channel[[:space:]]+|^[[:space:]]*error:[[:space:]]*too many arguments for '\''send'\''.*$|^[[:space:]]*Sent via Telegram|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoSelectFamily=|dnsResultOrder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$')"
+
+    marked="$(extract_last_marked_block "$cleaned")"
+    if [ -n "$marked" ]; then
+        cleaned="$marked"
+    fi
+
+    cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/^🔗[[:space:]]*//')"
 
     printf '%s' "$(trim_text "$cleaned")"
 }
@@ -139,6 +165,12 @@ run_with_timeout() {
     RUN_TIMEOUT_SEC="$(compute_timeout "$MSG")"
     cd "$WORKSPACE" || exit 1
     FULL_MSG="[${CHANNEL}:${TARGET}] $MSG"
+
+    if ! acquire_bridge_lock; then
+        openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "Bridge is still processing a previous request. Please retry in a moment."
+        printf '[%s] /cc lock timeout after %ss\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$LOCK_WAIT_SEC"
+        exit 0
+    fi
 
     run_result="$(run_with_timeout --continue "$FULL_MSG")"
     rc="$(printf '%s' "$run_result" | head -n 1)"

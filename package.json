@@ -1,6 +1,6 @@
 {
   "name": "openclaw-opencode-bridge",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Bridge OpenClaw messaging channels to OpenCode via tmux persistent sessions",
   "main": "./lib/onboard.js",
   "bin": {
@@ -37,10 +37,10 @@
     "name": "Febrian",
     "email": "febro.aw20@gmail.com"
   },
-  "homepage": "https://febro.fun",
+  "homepage": "http://febro.fun",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bettep-dev/openclaw-opencode-bridge"
+    "url": "https://github.com/AganFebro/openclaw-opencode-bridge"
   }
 }
