@@ -4,31 +4,41 @@
 [![license](https://img.shields.io/npm/l/openclaw-opencode-bridge)](LICENSE)
 [![node](https://img.shields.io/node/v/openclaw-opencode-bridge)](package.json)
 
-> Liked this project? Consider donating!
+Language: [English](README_EN.md)
 
-> EVM Address: 0xe81c32383C8F21A14E6C2264939dA512e9F9bb42
+Bridge untuk menghubungkan channel OpenClaw ke OpenCode lewat command prefix seperti `/cc` atau `@cc`.
 
-Bridge [OpenClaw](https://openclaw.ai) messaging channels to [OpenCode](https://opencode.ai) via persistent tmux sessions.
-
-Send `@cc` or `/cc` from any chat — your message is routed directly to OpenCode running in your terminal, bypassing the gateway LLM entirely. No separate API keys, no OAuth, no extra costs.
+Pesan dari user akan langsung dieksekusi oleh OpenCode CLI (`opencode run`), lalu hasilnya dikirim balik lewat `openclaw message send`.
 
 <p>
   <img src="DEMO_1.png" alt="Telegram demo — sending a command" width="400" />
   <img src="DEMO_2.png" alt="Telegram demo — receiving a response" width="400" />
 </p>
 
-> **⚠️ Telegram only.** This plugin has been developed and tested exclusively with the Telegram channel. Other channels (Discord, Slack, etc.) may use different message formats or metadata wrapping that could break prefix detection or LLM suppression. Community contributions for additional channels are welcome — please open an issue if you encounter problems.
+> ⚠️ Fokus pengujian saat ini adalah Telegram. Channel lain mungkin butuh penyesuaian format.
 
-## How It Works
+## Donasi
 
-<img alt="Architecture" src="https://mermaid.ink/img/Z3JhcGggVEQKICAgIEFbIkNoYXQiXSAtLT58IkBjYyBtZXNzYWdlInwgQlsiT3BlbkNsYXcgR2F0ZXdheSJdCiAgICBCIC0tPiBDWyJvcGVuY29kZS1icmlkZ2UgcGx1Z2luIl0KICAgIEMgLS0+fHN1cHByZXNzIExMTHwgQgogICAgQyAtLT58ZXhlY0ZpbGV8IERbIlNoZWxsIFNjcmlwdCJdCiAgICBEIC0tPnx0bXV4IHBhc3RlLWJ1ZmZlcnwgRVsiT3BlbkNvZGUgLyB0bXV4Il0KICAgIEUgLS0+fCJvcGVuY2xhdyBtZXNzYWdlIHNlbmQifCBB" />
+Kalau project ini membantu, kamu bisa dukung lewat:
 
-1. User sends a prefixed message (e.g. `@cc deploy the app`)
-2. The plugin intercepts the message and suppresses the gateway LLM
-3. A shell script forwards the message to OpenCode in a persistent tmux session
-4. OpenCode replies back through the same channel via `openclaw message send`
+`0xe81c32383C8F21A14E6C2264939dA512e9F9bb42`
 
-## Prerequisites
+## Fitur Utama
+
+- Prefix command: `@cc`, `/cc`, `@ccn`, `/ccn`, `@ccu`, `@ccm`, `@ccms`
+- Reply OpenCode dikirim otomatis ke user lewat channel OpenClaw
+- Output dibersihkan dari noise terminal/tool logs
+- Timeout bersifat batas maksimum, bukan delay tetap
+- Dukungan onboarding/uninstall otomatis
+
+## Alur Kerja Singkat
+
+1. User kirim pesan ber-prefix, contoh: `/cc buat script python`.
+2. Plugin menangkap pesan dan menahan reply default gateway.
+3. Script bridge menjalankan `opencode run`.
+4. Hasil OpenCode dikirim balik ke user melalui `openclaw message send`.
+
+## Prasyarat
 
 | Dependency | Install |
 |---|---|
@@ -36,53 +46,63 @@ Send `@cc` or `/cc` from any chat — your message is routed directly to OpenCod
 | [OpenCode](https://opencode.ai) | `npm i -g opencode-ai` |
 | [tmux](https://github.com/tmux/tmux) | Auto-installed during onboard if missing |
 
-> **Note:** macOS and Linux only. Windows is not supported (tmux dependency).
+> Sistem operasi yang didukung: Linux dan macOS.
 
-## Quick Start
+## Instalasi Cepat
 
 ```bash
 npm i -g openclaw-opencode-bridge
 openclaw-opencode-bridge onboard
 ```
 
-The interactive wizard configures everything — plugin, shell scripts, OPENCODE.md, daemon, and channel settings.
+Wizard onboarding akan mengatur plugin, script, AGENTS.md, daemon, dan konfigurasi channel.
 
-Verify the connection:
+Tes awal:
 
+```bash
+/cc hello
 ```
-@cc hello
-```
 
-## Commands
+## Daftar Perintah
 
-| Prefix | Description |
+| Prefix | Fungsi |
 |---|---|
-| `@cc` · `/cc` | Send to the current session (retains conversation context) |
-| `@ccn` · `/ccn` | Start a fresh session (kills existing, creates new) |
-| `@ccu` · `/ccu` | Show OpenCode usage stats |
-| `@ccm` · `/ccm` | List OpenCode models |
-| `@ccms` · `/ccms` | Set OpenCode model (by number or model-id) |
+| `@cc` · `/cc` | Lanjut ke sesi terbaru (`--continue`) |
+| `@ccn` · `/ccn` | Jalankan sesi baru tanpa `--continue` (konteks fresh) |
+| `@ccu` · `/ccu` | Tampilkan statistik pemakaian OpenCode |
+| `@ccm` · `/ccm` | Tampilkan daftar model OpenCode |
+| `@ccms` · `/ccms` | Ganti model OpenCode (nomor atau model-id) |
 
-Messages are sent as-is — no quoting needed:
+Contoh:
 
+```bash
+/cc refactor auth module dan tambah unit test
+/ccn review PR ini: https://github.com/org/repo/pull/42
+/ccu
 ```
-@cc refactor the auth module and add tests
-@ccn review this PR: https://github.com/org/repo/pull/42
-@ccu
-```
 
-Multiline messages and special characters (`$`, `` ` ``, `\`, quotes) are preserved exactly as typed.
+## Perilaku Timeout
 
-## Migration from v1
+- `/cc` memakai timeout adaptif dengan base `60s` dan maksimum `300s`.
+- `/ccn` memakai timeout adaptif dengan base `90s` dan maksimum `420s`.
+- Timeout adalah batas maksimal proses. Kalau OpenCode selesai lebih cepat, reply langsung dikirim saat itu juga.
 
-v2 replaces the legacy skill/hook system with a single OpenClaw plugin:
+## Catatan Sesi
+
+- `/ccn` tidak menghapus semua history OpenCode.
+- `/cc` biasanya melanjutkan sesi terbaru.
+- Data sesi OpenCode tersimpan di direktori data OpenCode user (contoh Linux: `~/.local/share/opencode`).
+
+## Migrasi dari Versi Lama
+
+Versi 2+ menggantikan sistem skill/hook lama menjadi plugin OpenClaw tunggal:
 
 ```bash
 npm i -g openclaw-opencode-bridge
 openclaw-opencode-bridge onboard
 ```
 
-The wizard detects and removes legacy components automatically.
+Komponen legacy akan dibersihkan otomatis saat onboarding.
 
 ## Uninstall
 
@@ -90,17 +110,16 @@ The wizard detects and removes legacy components automatically.
 openclaw-opencode-bridge uninstall
 ```
 
-Removes all installed components — plugin, shell scripts, OPENCODE.md additions, and daemon.
+Ini akan menghapus plugin, script bridge, AGENTS.md hasil instalasi bridge, dan daemon.
 
 ## Troubleshooting
 
-| Symptom | Fix |
+| Gejala | Solusi |
 |---|---|
-| LLM responds instead of delivery message | `openclaw gateway restart` |
-| Delivery confirmed but no reply | Check `tmux ls` — session may have crashed |
-| Multiline sends only first line | Re-run `openclaw-opencode-bridge onboard` (v2.0.6+) |
-
-> Forked from [openclaw-claude-bridge](https://github.com/bettep-dev/openclaw-claude-bridge) by [@bettep-dev](https://github.com/bettep-dev) — modified to work with OpenCode instead of Claude CLI.
+| Gateway LLM tetap membalas | Jalankan `openclaw gateway restart` |
+| Ada “OpenCode will reply shortly” tapi tidak ada balasan akhir | Cek log `/tmp/opencode-bridge-send.log` lalu ulangi `openclaw-opencode-bridge onboard` |
+| Perintah lambat/timeout | Cek prompt terlalu berat, lihat log bridge, pastikan OpenCode CLI normal |
+| Output aneh/berantakan | Ulangi onboarding agar script/plugin terbaru terpasang |
 
 ## License
 

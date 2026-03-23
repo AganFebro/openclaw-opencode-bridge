@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 11
+# bridge-version: 16
 # Start fresh session asynchronously and send instruction
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -9,7 +9,7 @@ WORKSPACE="{{WORKSPACE}}"
 LOG_FILE="/tmp/opencode-bridge-send.log"
 BASE_TIMEOUT_SEC=90
 MAX_TIMEOUT_SEC=420
-LOCK_WAIT_SEC=600
+LOCK_WAIT_SEC=3
 
 if [ -z "$MSG" ]; then
     echo "ERROR: No message provided"
@@ -30,18 +30,41 @@ normalize_text() {
 }
 
 acquire_bridge_lock() {
-    local safe_channel safe_target lock_file
+    local safe_channel safe_target holder_pid waited
     safe_channel="$(printf '%s' "$CHANNEL" | sed -E 's/[^a-zA-Z0-9._-]/_/g')"
     safe_target="$(printf '%s' "$TARGET" | sed -E 's/[^a-zA-Z0-9._-]/_/g')"
-    lock_file="/tmp/opencode-bridge-${safe_channel}-${safe_target}.lock"
+    LOCK_DIR="/tmp/opencode-bridge-${safe_channel}-${safe_target}.lockdir"
+    waited=0
 
-    if command -v flock >/dev/null 2>&1; then
-        exec 200>"$lock_file"
-        flock -w "$LOCK_WAIT_SEC" 200
-        return $?
-    fi
+    while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+        if [ ! -s "$LOCK_DIR/pid" ]; then
+            rm -rf "$LOCK_DIR"
+            continue
+        fi
+        if [ -f "$LOCK_DIR/pid" ]; then
+            holder_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+            if [ -n "$holder_pid" ] && ! kill -0 "$holder_pid" 2>/dev/null; then
+                rm -rf "$LOCK_DIR"
+                continue
+            fi
+        fi
 
+        if [ "$waited" -ge "$LOCK_WAIT_SEC" ]; then
+            return 1
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    printf '%s\n' "${BASHPID:-$$}" > "$LOCK_DIR/pid"
+    trap 'release_bridge_lock' EXIT INT TERM
     return 0
+}
+
+release_bridge_lock() {
+    if [ -n "${LOCK_DIR:-}" ] && [ -d "$LOCK_DIR" ]; then
+        rm -rf "$LOCK_DIR"
+    fi
 }
 
 compute_timeout() {
@@ -126,6 +149,14 @@ sanitize_output() {
     printf '%s' "$(trim_text "$cleaned")"
 }
 
+extract_text_from_json_stream() {
+    local raw="$1"
+    local parsed
+
+    parsed="$(printf '%s\n' "$raw" | node -e "const fs=require('fs');const lines=fs.readFileSync(0,'utf8').split(/\r?\n/);let out='';for(const line of lines){const s=line.trim();if(!s)continue;try{const obj=JSON.parse(s);if(obj&&obj.type==='text'&&obj.part&&typeof obj.part.text==='string'){out+=obj.part.text;}}catch{}}process.stdout.write(out);" 2>/dev/null)"
+    printf '%s' "$(trim_text "$parsed")"
+}
+
 sentence_case_first() {
     local text="$1"
     printf '%s' "$text" | awk '
@@ -173,31 +204,43 @@ run_with_timeout() {
         guarded_path="${guard_dir}:${PATH}"
     fi
 
-    if [ -n "$mode" ]; then
-        PATH="$guarded_path" "$OPENCODE" run "$mode" "$prompt" >"$tmp" 2>&1 &
-    else
-        PATH="$guarded_path" "$OPENCODE" run "$prompt" >"$tmp" 2>&1 &
-    fi
-    pid=$!
-
-    (
-        sleep "$RUN_TIMEOUT_SEC"
-        if kill -0 "$pid" 2>/dev/null; then
-            touch "${tmp}.timeout"
-            kill "$pid" 2>/dev/null
-            sleep 2
-            kill -9 "$pid" 2>/dev/null
+    # Timeout here is an upper bound only; command returns immediately when OpenCode finishes.
+    if command -v timeout >/dev/null 2>&1; then
+        if [ -n "$mode" ]; then
+            PATH="$guarded_path" timeout --signal=TERM --kill-after=2 "${RUN_TIMEOUT_SEC}s" \
+                "$OPENCODE" run "$mode" --no-fork --format json "$prompt" >"$tmp" 2>&1
+        else
+            PATH="$guarded_path" timeout --signal=TERM --kill-after=2 "${RUN_TIMEOUT_SEC}s" \
+                "$OPENCODE" run --no-fork --format json "$prompt" >"$tmp" 2>&1
         fi
-    ) &
-    watchdog=$!
+        rc=$?
+    else
+        if [ -n "$mode" ]; then
+            PATH="$guarded_path" "$OPENCODE" run "$mode" --no-fork --format json "$prompt" >"$tmp" 2>&1 &
+        else
+            PATH="$guarded_path" "$OPENCODE" run --no-fork --format json "$prompt" >"$tmp" 2>&1 &
+        fi
+        pid=$!
 
-    wait "$pid"
-    rc=$?
-    kill "$watchdog" 2>/dev/null
+        (
+            sleep "$RUN_TIMEOUT_SEC"
+            if kill -0 "$pid" 2>/dev/null; then
+                touch "${tmp}.timeout"
+                kill "$pid" 2>/dev/null
+                sleep 2
+                kill -9 "$pid" 2>/dev/null
+            fi
+        ) &
+        watchdog=$!
 
-    if [ -f "${tmp}.timeout" ]; then
-        rc=124
-        rm -f "${tmp}.timeout"
+        wait "$pid"
+        rc=$?
+        kill "$watchdog" 2>/dev/null
+
+        if [ -f "${tmp}.timeout" ]; then
+            rc=124
+            rm -f "${tmp}.timeout"
+        fi
     fi
 
     output="$(cat "$tmp")"
@@ -224,7 +267,10 @@ run_with_timeout() {
     run_result="$(run_with_timeout "" "$FULL_MSG")"
     rc="$(printf '%s' "$run_result" | head -n 1)"
     raw_output="$(printf '%s' "$run_result" | tail -n +2)"
-    output="$(sanitize_output "$raw_output")"
+    output="$(extract_text_from_json_stream "$raw_output")"
+    if [ -z "$output" ]; then
+        output="$(sanitize_output "$raw_output")"
+    fi
 
     if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
         if [ -n "$output" ] && ! is_trivial_echo "$output" "$MSG"; then

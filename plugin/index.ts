@@ -13,7 +13,7 @@ const SCRIPT_MAP: Record<string, string> = {
 
 const REQUIRES_ARG = new Set(["cc", "ccn"]);
 const EXEC_TIMEOUT = 15_000;
-const SUPPRESSION_WINDOW = 15_000;
+const DELIVERY_TTL_MS = 10_000;
 
 const DELIVERY_MSG = "🔗 OpenCode will reply shortly.";
 
@@ -24,15 +24,13 @@ const SILENT_PROMPT =
   "You MUST NOT call any tools or functions.\n" +
   `Output ONLY this exact text, nothing else: ${DELIVERY_MSG}`;
 
-// NOTE: Single-user assumption — concurrent users may see cross-suppression
-let bridgeSuppressUntil = 0;
-
 /**
  * Flag set by message_received (fires FIRST) and consumed by before_prompt_build (fires SECOND).
  * This bypasses the unreliable extractLastUserText approach entirely.
  * message_received gets event.content (raw user text) which always correctly detects @cc prefix.
  */
 let pendingBridgeCommand = false;
+let pendingDeliveryUntil = 0;
 
 export default function register(api: OpenClawPluginApi) {
   const config = api.pluginConfig as {
@@ -67,9 +65,6 @@ export default function register(api: OpenClawPluginApi) {
 
     // Set flag for before_prompt_build to consume
     pendingBridgeCommand = true;
-    // Keep suppression narrow to this turn to avoid cross-message blocking.
-    bridgeSuppressUntil = Date.now() + SUPPRESSION_WINDOW;
-
     api.logger.debug?.(
       `[opencode-bridge] message_received: command=${command}, pendingBridgeCommand=true`,
     );
@@ -102,42 +97,40 @@ export default function register(api: OpenClawPluginApi) {
   // No longer relies on extractLastUserText for prefix detection.
   api.on("before_prompt_build", async (event, ctx) => {
     const shouldSuppress = pendingBridgeCommand;
+    const deliveryPending = Date.now() < pendingDeliveryUntil;
 
     api.logger.debug?.(
-      `[opencode-bridge] before_prompt_build: pendingBridgeCommand=${pendingBridgeCommand}, bridgeSuppressUntil=${bridgeSuppressUntil > Date.now()}`,
+      `[opencode-bridge] before_prompt_build: pendingBridgeCommand=${pendingBridgeCommand}, deliveryPending=${deliveryPending}`,
     );
 
     if (shouldSuppress) {
       pendingBridgeCommand = false;
-      bridgeSuppressUntil = Date.now() + SUPPRESSION_WINDOW;
+      pendingDeliveryUntil = Date.now() + DELIVERY_TTL_MS;
       return { systemPrompt: SILENT_PROMPT, prependContext: SILENT_PROMPT };
-    } else {
-      // Clear suppression for non-bridge messages
-      bridgeSuppressUntil = 0;
     }
   });
 
   // --- Hook 3: message_sending (modifying) ---
-  // Replace LLM output with delivery confirmation while bridge suppression is active
+  // Replace one outgoing LLM message with delivery confirmation
   api.on("message_sending", async (_event, _ctx) => {
-    const suppressing = Date.now() < bridgeSuppressUntil;
+    const suppressing = Date.now() < pendingDeliveryUntil;
     api.logger.debug?.(
       `[opencode-bridge] message_sending: suppressing=${suppressing}`,
     );
 
     if (suppressing) {
       // One-shot override for the intercepted bridge message.
-      bridgeSuppressUntil = 0;
+      pendingDeliveryUntil = 0;
       return { content: DELIVERY_MSG, cancel: false };
     }
   });
 
   // --- Hook 4: before_tool_call (modifying) ---
-  // Block ALL tool calls while bridge suppression is active
+  // Block ALL tool calls while delivery override is pending
   api.on("before_tool_call", async (_event, _ctx) => {
-    if (Date.now() < bridgeSuppressUntil) {
+    if (Date.now() < pendingDeliveryUntil) {
       api.logger.debug?.(
-        `[opencode-bridge] before_tool_call: BLOCKED (suppression active)`,
+        `[opencode-bridge] before_tool_call: BLOCKED (delivery pending)`,
       );
       return { block: true, blockReason: "opencode-bridge: message intercepted, tools disabled" };
     }

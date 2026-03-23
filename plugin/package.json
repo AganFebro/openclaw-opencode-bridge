@@ -1,8 +1,8 @@
 {
   "name": "opencode-bridge",
-  "version": "2.0.6",
+  "version": "2.1.12",
   "private": true,
-  "description": "OpenClaw plugin: route prefix messages to OpenCode via tmux",
+  "description": "OpenClaw plugin: route prefix messages to OpenCode CLI",
   "type": "module",
   "openclaw": {
     "extensions": ["./index.ts"]

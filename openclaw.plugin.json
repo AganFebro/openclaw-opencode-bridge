@@ -1,7 +1,7 @@
 {
   "id": "opencode-bridge",
   "name": "OpenCode Bridge",
-  "description": "Route @cc/@ccn/@ccu prefix messages to OpenCode via tmux, suppressing the default LLM response.",
+  "description": "Route @cc/@ccn/@ccu prefix messages to OpenCode CLI, suppressing the default LLM response.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

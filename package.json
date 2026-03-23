@@ -1,7 +1,7 @@
 {
   "name": "openclaw-opencode-bridge",
-  "version": "2.1.5",
-  "description": "Bridge OpenClaw messaging channels to OpenCode via tmux persistent sessions",
+  "version": "2.1.6",
+  "description": "Bridge OpenClaw messaging channels to OpenCode via persistent OpenCode sessions",
   "main": "./lib/onboard.js",
   "bin": {
     "openclaw-opencode-bridge": "./lib/cli.js"
