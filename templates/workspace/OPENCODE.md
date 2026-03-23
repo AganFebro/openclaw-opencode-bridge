@@ -17,18 +17,13 @@ The format is: `[CHANNEL:ID] actual message`
 ### Procedure
 
 1. Extract `{CHANNEL}` and `{ID}` from the `[...]` prefix
-2. Ignore everything before `] ` — that is the prefix, not the message
+2. Ignore everything before `] ` — that is metadata, not user content
 3. Perform the task described in the actual message
-4. **After completion, send the response via:**
-```bash
-openclaw message send --channel {CHANNEL} --target {ID} -m '🔗 your response here'
-```
-5. **Every message MUST start with 🔗** — this identifies you as OpenCode
-6. Split messages over 4000 characters into multiple sends (each starts with 🔗)
+4. Return only the assistant answer text
 
-### Response transmission is mandatory (never skip)
+### Output rules
 
-- **Every message MUST receive a response.**
-- Ignore the prefix, only respond to the actual message content.
-- If the task failed, send the failure reason. If it succeeded, send the result.
-- If you did not run `openclaw message send`, the task is **NOT** complete.
+- Do not output or suggest `openclaw message send` commands.
+- Do not include the `[channel:id]` prefix in your response.
+- Do not prepend delivery markers such as `🔗` unless explicitly requested by the user.
+- If the task fails, return a direct failure reason in plain text.

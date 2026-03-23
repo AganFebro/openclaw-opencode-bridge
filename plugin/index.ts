@@ -12,7 +12,8 @@ const SCRIPT_MAP: Record<string, string> = {
 };
 
 const REQUIRES_ARG = new Set(["cc", "ccn"]);
-const EXEC_TIMEOUT = 120_000;
+const EXEC_TIMEOUT = 15_000;
+const SUPPRESSION_WINDOW = 15_000;
 
 const DELIVERY_MSG = "🔗 OpenCode will reply shortly.";
 
@@ -57,15 +58,6 @@ export default function register(api: OpenClawPluginApi) {
     const script = SCRIPT_MAP[command];
     if (!script) return;
 
-    // Set flag for before_prompt_build to consume
-    pendingBridgeCommand = true;
-    // Also set suppression timer as safety net
-    bridgeSuppressUntil = Date.now() + EXEC_TIMEOUT + 5_000;
-
-    api.logger.debug?.(
-      `[opencode-bridge] message_received: command=${command}, pendingBridgeCommand=true`,
-    );
-
     const arg = match[2].trim();
 
     if (REQUIRES_ARG.has(command) && !arg) {
@@ -73,17 +65,32 @@ export default function register(api: OpenClawPluginApi) {
       return;
     }
 
+    // Set flag for before_prompt_build to consume
+    pendingBridgeCommand = true;
+    // Keep suppression narrow to this turn to avoid cross-message blocking.
+    bridgeSuppressUntil = Date.now() + SUPPRESSION_WINDOW;
+
+    api.logger.debug?.(
+      `[opencode-bridge] message_received: command=${command}, pendingBridgeCommand=true`,
+    );
+
     const scriptPath = `${scriptsDir}/${script}`;
     const args = arg ? [arg] : [];
+    const startedAt = Date.now();
 
     execFile(
       scriptPath,
       args,
       { timeout: EXEC_TIMEOUT },
       (error, _stdout, stderr) => {
+        const elapsedMs = Date.now() - startedAt;
         if (error) {
           api.logger.error?.(
-            `[opencode-bridge] ${script} failed: ${stderr?.trim() || error.message}`,
+            `[opencode-bridge] ${script} failed after ${elapsedMs}ms: ${stderr?.trim() || error.message}`,
+          );
+        } else {
+          api.logger.debug?.(
+            `[opencode-bridge] ${script} queued/completed in ${elapsedMs}ms`,
           );
         }
       },
@@ -102,7 +109,7 @@ export default function register(api: OpenClawPluginApi) {
 
     if (shouldSuppress) {
       pendingBridgeCommand = false;
-      bridgeSuppressUntil = Date.now() + EXEC_TIMEOUT + 5_000;
+      bridgeSuppressUntil = Date.now() + SUPPRESSION_WINDOW;
       return { systemPrompt: SILENT_PROMPT, prependContext: SILENT_PROMPT };
     } else {
       // Clear suppression for non-bridge messages
@@ -119,6 +126,8 @@ export default function register(api: OpenClawPluginApi) {
     );
 
     if (suppressing) {
+      // One-shot override for the intercepted bridge message.
+      bridgeSuppressUntil = 0;
       return { content: DELIVERY_MSG, cancel: false };
     }
   });
