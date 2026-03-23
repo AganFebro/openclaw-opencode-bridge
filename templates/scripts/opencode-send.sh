@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 18
+# bridge-version: 19
 # Dispatch instruction to OpenCode asynchronously and relay response
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -7,8 +7,8 @@ CHANNEL="{{CHANNEL}}"
 TARGET="{{TARGET_ID}}"
 WORKSPACE="{{WORKSPACE}}"
 LOG_FILE="/tmp/opencode-bridge-send.log"
-BASE_TIMEOUT_SEC=60
-MAX_TIMEOUT_SEC=300
+BASE_TIMEOUT_SEC=300
+MAX_TIMEOUT_SEC=600
 LOCK_WAIT_SEC=3
 
 if [ -z "$MSG" ]; then

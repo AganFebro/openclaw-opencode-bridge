@@ -83,8 +83,8 @@ Contoh:
 
 ## Perilaku Timeout
 
-- `/cc` memakai timeout adaptif dengan base `60s` dan maksimum `300s`.
-- `/ccn` memakai timeout adaptif dengan base `90s` dan maksimum `420s`.
+- `/cc` memakai timeout adaptif dengan base `300s` dan maksimum `600s`.
+- `/ccn` memakai timeout adaptif dengan base `300s` dan maksimum `600s`.
 - Timeout adalah batas maksimal proses. Kalau OpenCode selesai lebih cepat, reply langsung dikirim saat itu juga.
 
 ## Catatan Sesi

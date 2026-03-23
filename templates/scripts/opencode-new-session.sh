@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 16
+# bridge-version: 17
 # Start fresh session asynchronously and send instruction
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -7,8 +7,8 @@ CHANNEL="{{CHANNEL}}"
 TARGET="{{TARGET_ID}}"
 WORKSPACE="{{WORKSPACE}}"
 LOG_FILE="/tmp/opencode-bridge-send.log"
-BASE_TIMEOUT_SEC=90
-MAX_TIMEOUT_SEC=420
+BASE_TIMEOUT_SEC=300
+MAX_TIMEOUT_SEC=600
 LOCK_WAIT_SEC=3
 
 if [ -z "$MSG" ]; then

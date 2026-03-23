@@ -77,8 +77,8 @@ Examples:
 
 ## Timeout Behavior
 
-- `/cc` uses adaptive timeout with base `60s` and max `300s`.
-- `/ccn` uses adaptive timeout with base `90s` and max `420s`.
+- `/cc` uses adaptive timeout with base `300s` and max `600s`.
+- `/ccn` uses adaptive timeout with base `300s` and max `600s`.
 - Timeout is a hard upper bound. If OpenCode finishes early, output is sent immediately.
 
 ## Session Notes
