@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 10
+# bridge-version: 11
 # Dispatch instruction to OpenCode asynchronously and relay response
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -7,8 +7,8 @@ CHANNEL="{{CHANNEL}}"
 TARGET="{{TARGET_ID}}"
 WORKSPACE="{{WORKSPACE}}"
 LOG_FILE="/tmp/opencode-bridge-send.log"
-BASE_TIMEOUT_SEC=45
-MAX_TIMEOUT_SEC=300
+BASE_TIMEOUT_SEC=90
+MAX_TIMEOUT_SEC=420
 LOCK_WAIT_SEC=600
 
 if [ -z "$MSG" ]; then
@@ -56,7 +56,7 @@ compute_timeout() {
     if [ "$chars" -gt 280 ]; then timeout=$((timeout + 20)); fi
     if [ "$words" -gt 25 ]; then timeout=$((timeout + 20)); fi
 
-    if printf '%s' "$msg" | grep -Eqi '\b(create|build|write|implement|script|code|program|refactor|debug|fix|test|automation|deploy|migrate|api|database|project)\b'; then
+    if printf '%s' "$msg" | grep -Eqi '\b(create|build|write|implement|script|code|program|refactor|debug|fix|test|automation|deploy|migrate|api|database|project|search|news|weather|forecast|cuaca|berita)\b'; then
         timeout=$((timeout + 60))
     fi
 
@@ -76,11 +76,6 @@ is_trivial_echo() {
     output_norm="$(normalize_text "$1")"
     message_norm="$(normalize_text "$2")"
     [ -n "$message_norm" ] && [ "$output_norm" = "$message_norm" ]
-}
-
-has_external_delivery_success() {
-    local raw="$1"
-    printf '%s\n' "$raw" | grep -Eqi 'Sent via [A-Za-z]+|Message ID:[[:space:]]*[0-9]+'
 }
 
 extract_last_marked_block() {
@@ -119,7 +114,7 @@ sanitize_output() {
     cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/^[[:space:]]*>+[[:space:]]?//; /^```/d')"
 
     cleaned="$(printf '%s\n' "$cleaned" | grep -Eiv \
-        '^[[:space:]]*$|^[[:space:]]*(build[[:space:]]*·|◇[[:space:]]+doctor warnings)[[:space:]]*$|^[[:space:]]*◇[[:space:]]+|^[[:space:]]*exa[[:space:]]+(web|code)[[:space:]]+search([[:space:]]+.*)?$|^[[:space:]]*[←→↳].*|^[[:space:]]*wrote file successfully\.?$|^[[:space:]]*(\$[[:space:]]*)?openclaw message send --channel[[:space:]]+|^[[:space:]]*error:[[:space:]]*too many arguments for '\''send'\''.*$|^[[:space:]]*sent via telegram|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoselectfamily=|dnsresultorder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$')"
+        '^[[:space:]]*$|^[[:space:]]*(build[[:space:]]*·|◇[[:space:]]+doctor warnings)[[:space:]]*$|^[[:space:]]*◇[[:space:]]+|^[[:space:]]*exa[[:space:]]+(web|code)[[:space:]]+search([[:space:]]+.*)?$|^[[:space:]]*[←→↳].*|^[[:space:]]*wrote file successfully\.?$|^[[:space:]]*(\$[[:space:]]*)?openclaw message send --channel[[:space:]]+|^[[:space:]]*bridge-guard:[[:space:]]*blocked openclaw message send.*$|^[[:space:]]*error:[[:space:]]*too many arguments for '\''send'\''.*$|^[[:space:]]*sent via telegram|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoselectfamily=|dnsresultorder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$')"
 
     marked="$(extract_last_marked_block "$cleaned")"
     if [ -n "$marked" ]; then
@@ -166,10 +161,19 @@ apply_reply_style() {
 run_with_timeout() {
     local mode="$1"
     local prompt="$2"
-    local output rc tmp pid watchdog
+    local output rc tmp pid watchdog guard_dir guarded_path real_openclaw
 
     tmp="$(mktemp /tmp/opencode-run.XXXXXX)"
-    "$OPENCODE" run "$mode" "$prompt" >"$tmp" 2>&1 &
+    guarded_path="$PATH"
+    real_openclaw="$(command -v openclaw 2>/dev/null || true)"
+    if [ -n "$real_openclaw" ]; then
+        guard_dir="$(mktemp -d /tmp/opencode-bridge-guard.XXXXXX)"
+        printf '#!/bin/sh\nif [ "$1" = "message" ] && [ "$2" = "send" ]; then\n  echo "bridge-guard: blocked openclaw message send from opencode runtime" >&2\n  exit 64\nfi\nexec "%s" "$@"\n' "$real_openclaw" > "${guard_dir}/openclaw"
+        chmod +x "${guard_dir}/openclaw"
+        guarded_path="${guard_dir}:${PATH}"
+    fi
+
+    PATH="$guarded_path" "$OPENCODE" run "$mode" "$prompt" >"$tmp" 2>&1 &
     pid=$!
 
     (
@@ -194,6 +198,7 @@ run_with_timeout() {
 
     output="$(cat "$tmp")"
     rm -f "$tmp"
+    [ -n "${guard_dir:-}" ] && rm -rf "$guard_dir"
 
     printf '%s\n' "$rc"
     printf '%s' "$output"
@@ -217,7 +222,11 @@ run_with_timeout() {
     output="$(sanitize_output "$raw_output")"
 
     if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-        output="OpenCode timed out after ${RUN_TIMEOUT_SEC}s. Task may still be running. Try waiting a bit or send a follow-up."
+        if [ -n "$output" ] && ! is_trivial_echo "$output" "$MSG"; then
+            output="${output}\n\n(Stopped after ${RUN_TIMEOUT_SEC}s timeout.)"
+        else
+            output="OpenCode timed out after ${RUN_TIMEOUT_SEC}s. Try a narrower prompt or send a follow-up."
+        fi
     elif [ -z "$output" ]; then
         output="OpenCode finished, but returned an empty response."
     elif is_trivial_echo "$output" "$MSG"; then
@@ -226,11 +235,7 @@ run_with_timeout() {
 
     output="$(apply_reply_style "$output")"
 
-    if has_external_delivery_success "$raw_output"; then
-        printf '[%s] /cc skipped bridge send (already sent by OpenCode)\n' "$(date '+%Y-%m-%d %H:%M:%S')"
-    else
-        openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$output"
-    fi
+    openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$output"
 
     ended_at=$(date +%s)
     elapsed=$((ended_at - started_at))
