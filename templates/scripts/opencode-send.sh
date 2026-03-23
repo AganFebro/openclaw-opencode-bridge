@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 9
+# bridge-version: 10
 # Dispatch instruction to OpenCode asynchronously and relay response
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -116,8 +116,10 @@ sanitize_output() {
 
     cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/\[[0-9]{1,3}m//g')"
 
-    cleaned="$(printf '%s\n' "$cleaned" | grep -Ev \
-        '^[[:space:]]*$|^[[:space:]]*(build[[:space:]]*·|◇[[:space:]]+Doctor warnings)[[:space:]]*$|^[[:space:]]*◇[[:space:]]+|^[[:space:]]*[←→↳].*|^[[:space:]]*Wrote file successfully\.?$|^[[:space:]]*(\$[[:space:]]*)?openclaw message send --channel[[:space:]]+|^[[:space:]]*error:[[:space:]]*too many arguments for '\''send'\''.*$|^[[:space:]]*Sent via Telegram|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoSelectFamily=|dnsResultOrder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$')"
+    cleaned="$(printf '%s\n' "$cleaned" | sed -E 's/^[[:space:]]*>+[[:space:]]?//; /^```/d')"
+
+    cleaned="$(printf '%s\n' "$cleaned" | grep -Eiv \
+        '^[[:space:]]*$|^[[:space:]]*(build[[:space:]]*·|◇[[:space:]]+doctor warnings)[[:space:]]*$|^[[:space:]]*◇[[:space:]]+|^[[:space:]]*exa[[:space:]]+(web|code)[[:space:]]+search([[:space:]]+.*)?$|^[[:space:]]*[←→↳].*|^[[:space:]]*wrote file successfully\.?$|^[[:space:]]*(\$[[:space:]]*)?openclaw message send --channel[[:space:]]+|^[[:space:]]*error:[[:space:]]*too many arguments for '\''send'\''.*$|^[[:space:]]*sent via telegram|^[[:space:]]*\[(telegram|discord|slack|whatsapp|signal|irc|matrix|line|mattermost|teams)\]|autoselectfamily=|dnsresultorder=|^[[:space:]]*[│┌┐└┘├┤┬┴┼─═╭╮╰╯]+[[:space:]]*$')"
 
     marked="$(extract_last_marked_block "$cleaned")"
     if [ -n "$marked" ]; then
