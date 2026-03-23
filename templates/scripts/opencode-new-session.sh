@@ -1,5 +1,5 @@
 #!/bin/bash
-# bridge-version: 2
+# bridge-version: 3
 # Start fresh session and send instruction
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
@@ -15,6 +15,8 @@ fi
 cd "$WORKSPACE"
 FULL_MSG="[${CHANNEL}:${TARGET}] $MSG"
 
-"$OPENCODE" run --fork "$FULL_MSG" 2>&1 &
+OUTPUT=$("$OPENCODE" run --fork "$FULL_MSG" 2>&1)
 
-echo "✅ New session started. Reply will arrive shortly."
+openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$OUTPUT"
+
+echo "✅ OpenCode response sent."

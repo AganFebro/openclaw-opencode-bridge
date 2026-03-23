@@ -1,6 +1,6 @@
 #!/bin/bash
-# bridge-version: 2
-# Send instruction to OpenCode (non-interactive mode)
+# bridge-version: 3
+# Send instruction to OpenCode and relay response to telegram
 MSG="$1"
 OPENCODE="{{OPENCODE_BIN}}"
 CHANNEL="{{CHANNEL}}"
@@ -15,6 +15,8 @@ fi
 cd "$WORKSPACE"
 FULL_MSG="[${CHANNEL}:${TARGET}] $MSG"
 
-"$OPENCODE" run --continue "$FULL_MSG" 2>&1 &
+OUTPUT=$("$OPENCODE" run --continue "$FULL_MSG" 2>&1)
 
-echo "✅ Delivered to OpenCode. Reply will arrive shortly."
+openclaw message send --channel "$CHANNEL" --target "$TARGET" -m "$OUTPUT"
+
+echo "✅ OpenCode response sent."
