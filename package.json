@@ -1,13 +1,12 @@
 {
   "name": "openclaw-opencode-bridge",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "Bridge OpenClaw messaging channels to OpenCode via tmux persistent sessions",
   "main": "./lib/onboard.js",
   "bin": {
     "openclaw-opencode-bridge": "./lib/cli.js"
   },
-  "scripts": {
-  },
+  "scripts": {},
   "preferGlobal": true,
   "dependencies": {
     "commander": "^12.0.0",
@@ -17,7 +16,9 @@
     "node": ">=18.0.0"
   },
   "openclaw": {
-    "extensions": ["./plugin/index.ts"]
+    "extensions": [
+      "./plugin/index.ts"
+    ]
   },
   "keywords": [
     "openclaw",
